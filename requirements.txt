@@ -1,0 +1,14 @@
+# Core (versions pinned once the Kaggle environment is frozen; see requirements-kaggle.txt)
+torch
+torchvision
+torchxrayvision
+pydicom
+grad-cam
+captum
+numpy
+pandas
+scikit-learn
+scikit-image
+scipy
+matplotlib
+tqdm

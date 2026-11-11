@@ -1,0 +1,28 @@
+# Data: RSNA competition rules forbid redistribution
+data/*
+!data/README.md
+*.dcm
+metadata.csv
+splits.csv
+
+# Model weights and large artifacts
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+.venv*/
+*.egg-info/
