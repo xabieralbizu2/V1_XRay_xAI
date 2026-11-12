@@ -83,6 +83,49 @@ To run locally, create a virtual environment, install `requirements.txt` and fol
 
 ### Stage 2 — Splits and baselines (E0 zero-shot, B1 metadata only) ⏳
 
+### Stage 2a — Splits, metadata-only baseline (B1) and image cache ✅
+
+**Splits.** Patient-level 70/15/15 split stratified by target × view (5 patients with invalid ages removed). All experiments use the same `splits.csv`.
+
+| Split | Patients | Prevalence | AP share |
+|---|---:|---:|---:|
+| Train | 18,675 | 22.5% | 45.6% |
+| Validation | 4,002 | 22.5% | 45.6% |
+| Test | 4,002 | 22.5% | 45.6% |
+
+**B1: logistic regression on view, sex and age only (no image).** Test ROC-AUC with 95% bootstrap CI:
+
+| Subset | AUC |
+|---|---|
+| Overall | 0.727 [0.709, 0.746] |
+| Within AP | 0.552 [0.524, 0.578] |
+| Within PA | 0.545 [0.504, 0.588] |
+
+**Conclusions.**
+- Without looking at the image, metadata alone reaches an AUC of 0.73. Almost all of it comes from the view: within each view the AUC drops to ~0.55.
+- This "high overall, near-chance within group" pattern is the signature of a shortcut. It is the reference used to evaluate the image models: an image model whose AUC drops sharply within views is partly exploiting the view.
+- Visual inspection shows that AP images carry visible cues (ECG leads, lines, tubes, text markers) even when the label is negative.
+
+**Image cache.** 26,679 DICOMs resized once to 224×224 `uint8` (~1.3 GB, memory-mapped) in `data/processed/`.
+
+### Stage 2b — Zero-shot pretrained model (E0) ✅
+
+DenseNet-121 from TorchXRayVision trained **only on CheXpert** (`densenet121-res224-chex`, no NIH/RSNA images, so no test leakage), evaluated as is on the RSNA test split. Test ROC-AUC with 95% bootstrap CI:
+
+| Model | Overall | Within AP | Within PA |
+|---|---|---|---|
+| B1 (metadata only) | 0.727 [0.709, 0.746] | 0.552 [0.524, 0.578] | 0.545 [0.504, 0.588] |
+| E0 `Lung Opacity` output | **0.779** [0.762, 0.794] | 0.695 [0.670, 0.719] | 0.747 [0.713, 0.778] |
+| E0 `Pneumonia` output | 0.749 [0.732, 0.766] | 0.692 [0.667, 0.715] | 0.724 [0.687, 0.760] |
+
+**Conclusions.**
+- The pretrained model relies on image content: its AUC stays at 0.70–0.75 within each view, while the metadata baseline collapses to ~0.55. The overall-to-within-view drop is ~0.06 for E0 versus ~0.18 for B1.
+- This is expected: E0 never saw RSNA, so it could not learn this dataset's view–label correlation.
+- AP images are harder (0.695 vs 0.747): AP negatives are rarely normal (13%), so separating pneumonia from other findings is harder than in PA.
+- The `Lung Opacity` output matches the RSNA label best and is used as the E0 reference.
+
+**Hypothesis for Stage 3.** Fine-tuning on RSNA (E1) will raise the overall AUC but also let the model absorb the view shortcut, widening the overall-to-within-view gap compared with E0.
+
 ### Stage 3 — Fine-tuning (E1) and explanations ⏳
 
 ### Stage 4 — Sanity checks of the explanations ⏳
