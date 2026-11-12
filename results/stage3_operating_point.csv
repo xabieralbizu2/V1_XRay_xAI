@@ -1,0 +1,7 @@
+class,view,n,median_prob,flagged
+Lung Opacity,AP,700,0.584,0.96
+Lung Opacity,PA,202,0.206,0.718
+No Lung Opacity / Not Normal,AP,876,0.25,0.756
+No Lung Opacity / Not Normal,PA,922,0.082,0.44
+Normal,AP,250,0.035,0.184
+Normal,PA,1052,0.011,0.028
