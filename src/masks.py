@@ -93,31 +93,76 @@ def load_masks(mask_path: Path, patient_ids, dilate_px: int = 0) -> np.ndarray:
 
 
 class MaskedCXRDataset(Dataset):
-    """Cached images with one region replaced, for the lung-masking tests of Stage 4b.
+    """Cached images with one region replaced (Stage 4b masking tests and the E2 model).
 
-    mode="lung":    keep the (dilated) lungs, replace everything outside them.
+    mode="lung":    keep the lungs, replace everything outside them.
     mode="outside": keep everything outside the lungs, replace the lungs.
     fill="black":   replaced pixels set to -1024 (air in the TorchXRayVision range).
     fill="blur":    replaced pixels taken from a Gaussian-blurred copy of the image, which keeps
                     coarse intensity but removes fine cues such as text and cables.
+
+    Like CachedCXRDataset, items are (image, label) if `labels` is given, else the image.
+    The mask is applied before `transform`, so augmentation moves image and mask together.
     """
 
     def __init__(self, cache_path: Path, mask_path: Path, patient_ids, mode: str = "lung",
-                 fill: str = "black", dilate_px: int = 3, sigma: float = 8.0):
+                 fill: str = "black", dilate_px: int = 3, sigma: float = 8.0,
+                 labels=None, transform=None):
         if mode not in ("lung", "outside") or fill not in ("black", "blur"):
             raise ValueError(f"bad mode/fill: {mode!r}, {fill!r}")
         self.images = CachedCXRDataset(cache_path, patient_ids)
         self.masks = load_masks(mask_path, patient_ids, dilate_px=dilate_px)
-        self.mode, self.fill, self.sigma = mode, fill, sigma
+        self.labels = None if labels is None else np.asarray(labels, dtype=np.float32)
+        self.mode, self.fill, self.sigma, self.transform = mode, fill, sigma, transform
 
     def __len__(self) -> int:
         return len(self.images)
 
-    def __getitem__(self, i: int) -> torch.Tensor:
+    def __getitem__(self, i: int):
         x = self.images[i]
         keep = self.masks[i] if self.mode == "lung" else ~self.masks[i]
         if self.fill == "black":
             background = torch.full_like(x, -1024.0)
         else:
             background = torch.from_numpy(ndimage.gaussian_filter(x[0].numpy(), self.sigma))[None]
-        return torch.where(torch.from_numpy(keep)[None], x, background)
+        x = torch.where(torch.from_numpy(keep)[None], x, background)
+        if self.transform is not None:
+            x = self.transform(x)
+        if self.labels is None:
+            return x
+        return x, torch.tensor([self.labels[i]])
+
+
+def build_hull_cache(mask_path: Path, out_path: Path, dilate_px: int = 5,
+                     min_component: float = 0.01) -> pd.DataFrame:
+    """Lung masks for the E2 model: convex hull of each lung, dilated by `dilate_px`.
+
+    The hull fills in dense consolidations that the segmenter cuts out, and the dilation keeps
+    peripheral lesions. Suspect masks (wrong number of components or extreme area) are replaced
+    by the mean hull of all good masks, so no image is left without a lung region.
+    """
+    from skimage.morphology import convex_hull_image
+
+    mask_path, out_path = Path(mask_path), Path(out_path)
+    masks = np.load(mask_path, mmap_mode="r")
+    stats = pd.read_csv(mask_path.with_suffix(".stats.csv"))
+    hulls = np.lib.format.open_memmap(out_path, mode="w+", dtype=np.uint8, shape=masks.shape)
+    for i in tqdm(range(len(masks)), desc="Lung hulls"):
+        m = np.asarray(masks[i]).astype(bool)
+        labels, n = ndimage.label(m)
+        hull = np.zeros_like(m)
+        for k in range(1, n + 1):
+            comp = labels == k
+            if comp.mean() >= min_component:
+                hull |= convex_hull_image(comp)
+        if dilate_px:
+            hull = ndimage.binary_dilation(hull, iterations=dilate_px)
+        hulls[i] = hull
+    good = ~stats.suspect.to_numpy()
+    mean_hull = np.asarray(hulls[np.flatnonzero(good)]).mean(axis=0) >= 0.5
+    for i in np.flatnonzero(~good):
+        hulls[i] = mean_hull
+    hulls.flush()
+    pd.read_csv(mask_path.with_suffix(".index.csv")).to_csv(out_path.with_suffix(".index.csv"), index=False)
+    stats.to_csv(out_path.with_suffix(".stats.csv"), index=False)
+    return stats
