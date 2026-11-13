@@ -174,6 +174,8 @@ E1 is a much better classifier than E0, also within each view. But does it use t
 | E0 | 0.627 [0.587, 0.666] |
 | E1 | **0.785 [0.755, 0.814]** |
 
+Paired bootstrap of the difference E1 − E0: +0.158 [0.126, 0.190]; per-seed leakage 0.780 / 0.790 / 0.784.
+
 **Practical impact.** At a screening threshold set on validation (90 % sensitivity, probability 0.106):
 
 | Class | View | n | Flagged as opacity |
@@ -195,9 +197,30 @@ A healthy AP patient is 6.6× more likely to get a false alarm than a healthy PA
 
 Stage 4 is designed to tell H1 and H2 apart.
 
-### Stage 4 — Explanations, sanity checks and bias localisation ⏳
+### Stage 4 — Explanations, sanity checks and bias localisation 
 
-Lung masks, parameter-randomisation sanity checks, Grad-CAM / HiResCAM / Integrated Gradients, lung attribution fraction, linear probe for view, and lung-masking tests with pre-registered decision rules.
+### Stage 4a — Lung masks and sanity checks ✅
+
+**Lung masks.** TorchXRayVision PSPNet (ChestX-Det), union of both lungs, 224 px.
+98.1 % of masks have two lungs and a plausible area (median 0.30 of the image); ~37/40
+random masks pass visual review. Failures are under-segmentation of dense consolidations
+and rotated or poorly exposed AP films. Suspect masks (1.9 %) are excluded from
+mask-based analyses. Lungs look smaller in AP (mean area 0.28 vs 0.32 in PA): the lung
+silhouette itself carries some view information, which matters for interpreting
+lung-only tests and the lung-masked model (E2).
+
+**Sanity check (cascading parameter randomisation, 200 validation images).**
+
+| Method | Spearman after classifier | after denseblock4 | after conv0 | Verdict |
+|---|---|---|---|---|
+| Grad-CAM | −0.20 | 0.09 | 0.14 | pass |
+| HiResCAM (denseblock3) | 0.07 | −0.25 | 0.07 | pass |
+| Integrated Gradients | 0.63 | 0.59 | 0.26 | **fail** |
+
+Grad-CAM and HiResCAM depend on the learned weights. Integrated Gradients keeps most of
+its structure after the head and last block are randomised, and its correlation with the
+input image stays at 0.3–0.45 whatever the weights, behaving partly as an edge detector
+(as reported by Adebayo et al., 2018). Only the CAM methods are used to locate the bias.
 
 ### Stage 5 — Interventions (E2 lung mask, E3 RRR, E4 view reweighting) ⏳
 

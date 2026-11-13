@@ -69,7 +69,6 @@ E1 is a much better classifier than E0, including within each view. Seeds agree 
 
 **Lesson learned.** The original diagnostic (overall vs within-view AUC drop) cannot see this bias. Within-view AUC only compares patients of the same view, so it is blind to a constant "AP bonus". The bias only shows up when comparing across views. This is why the metrics in section 5 replace it.
 
-**Pending to close Stage 3:** paired bootstrap of the leakage difference E1 − E0 and leakage per seed.
 
 ## 5. Frozen evaluation protocol
 
