@@ -12,7 +12,10 @@ import torch
 import torch.nn.functional as F
 import torchxrayvision as xrv
 from scipy import ndimage
+from torch.utils.data import Dataset
 from tqdm import tqdm
+
+from src.dataset import CachedCXRDataset
 
 LUNG_TARGETS = ("Left Lung", "Right Lung")
 SEG_SIZE = 512
@@ -87,3 +90,34 @@ def load_masks(mask_path: Path, patient_ids, dilate_px: int = 0) -> np.ndarray:
     if dilate_px:
         m = np.stack([ndimage.binary_dilation(mi, iterations=dilate_px) for mi in m])
     return m
+
+
+class MaskedCXRDataset(Dataset):
+    """Cached images with one region replaced, for the lung-masking tests of Stage 4b.
+
+    mode="lung":    keep the (dilated) lungs, replace everything outside them.
+    mode="outside": keep everything outside the lungs, replace the lungs.
+    fill="black":   replaced pixels set to -1024 (air in the TorchXRayVision range).
+    fill="blur":    replaced pixels taken from a Gaussian-blurred copy of the image, which keeps
+                    coarse intensity but removes fine cues such as text and cables.
+    """
+
+    def __init__(self, cache_path: Path, mask_path: Path, patient_ids, mode: str = "lung",
+                 fill: str = "black", dilate_px: int = 3, sigma: float = 8.0):
+        if mode not in ("lung", "outside") or fill not in ("black", "blur"):
+            raise ValueError(f"bad mode/fill: {mode!r}, {fill!r}")
+        self.images = CachedCXRDataset(cache_path, patient_ids)
+        self.masks = load_masks(mask_path, patient_ids, dilate_px=dilate_px)
+        self.mode, self.fill, self.sigma = mode, fill, sigma
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    def __getitem__(self, i: int) -> torch.Tensor:
+        x = self.images[i]
+        keep = self.masks[i] if self.mode == "lung" else ~self.masks[i]
+        if self.fill == "black":
+            background = torch.full_like(x, -1024.0)
+        else:
+            background = torch.from_numpy(ndimage.gaussian_filter(x[0].numpy(), self.sigma))[None]
+        return torch.where(torch.from_numpy(keep)[None], x, background)

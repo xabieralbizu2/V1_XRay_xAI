@@ -1,0 +1,9 @@
+model,method,view,n,pointing,chance
+E0,Grad-CAM,AP,670,0.294,0.464
+E0,Grad-CAM,PA,200,0.1,0.24
+E0,HiResCAM@db3,AP,670,0.29,0.464
+E0,HiResCAM@db3,PA,200,0.335,0.24
+E1_seed0,Grad-CAM,AP,670,0.39,0.464
+E1_seed0,Grad-CAM,PA,200,0.195,0.24
+E1_seed0,HiResCAM@db3,AP,670,0.716,0.464
+E1_seed0,HiResCAM@db3,PA,200,0.55,0.24
